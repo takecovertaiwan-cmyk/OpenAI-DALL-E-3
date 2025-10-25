@@ -1,1 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WesmartAI<br>圖像生成及創作歷程存證系統</title>
+    
+<style>
+        /* B2-1. 基礎與容器樣式 */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 2em; background-color: #f4f6f8; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1, h2 { color: #1a237e; text-align: center; }
+        hr { border: none; height: 1px; background-color: #e0e0e0; margin: 2em 0; }
 
+        /* B2-2. 表單網格 (Form Grid) */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5em; margin-bottom: 1.5em; }
+        .form-group { display: flex; flex-direction: column; }
+        .full-width { grid-column: 1 / -1; }
+        label { font-weight: 600; margin-bottom: 0.5em; color: #555; }
+        input, textarea, button { font-size: 1em; padding: 0.8em; border-radius: 6px; border: 1px solid #ccc; }
+
+        /* B2-3. 按鈕樣式 (三種主要狀態) */
+        button { background-color: #3f51b5; color: white; border: none; cursor: pointer; font-weight: bold; transition: background-color 0.2s ease; }
+        button:hover { background-color: #303f9f; }
+        button:disabled { background-color: #9fa8da; cursor: not-allowed; }
+        #end-btn { background-color: #00796b; }
+        #end-btn:hover { background-color: #004d40; }
+        #report-btn { background-color: #d32f2f; }
+        #report-btn:hover { background-color: #b71c1c; }
+
+        /* B2-4. 預覽圖結果網格 */
+        #results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.5em; margin-top: 1.5em; }
+        .result-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+        .result-card img { max-width: 100%; height: auto; display: block; }
+        .result-card p { padding: 1em; margin: 0; background: #fafafa; font-size: 0.9em; }
+
+        /* B2-5. 載入中動畫 (Spinner) 與狀態列 */
+        .spinner { margin: 2em auto; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3f51b5; border-radius: 50%; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #status { text-align: center; margin-top: 1em; font-weight: 500; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WesmartAI<br>圖像生成及創作歷程存證系統</h1>
+        
+<h2>1. 生成預覽圖像</h2>
+        <div class="form-grid">
+            <div class="form-group full-width">
+                <label for="applicant_name">出證申請人名稱</label>
+                <input type="text" id="applicant_name" placeholder="請在此處輸入您的姓名或公司名稱">
+            </div>
+            <div class="form-group full-width">
+                <label for="prompt">輸入指令 (Prompt)</label>
+                <textarea id="prompt" placeholder="例如：A blue sports car" rows="3"></textarea>
+            </div>
+            
+            <div class="form-group full-width">
+                <label for="size">選擇尺寸 (DALL-E 3)</label>
+                <select id="size" style="padding: 0.8em; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; background-color: white; -webkit-appearance: none; appearance: none;">
+                    <option value="1024x1024">1024x1024 (方形)</option>
+                    <option value="1792x1024">1792x1024 (寬螢幕)</option>
+                    <option value="1024x1792">1024x1792 (垂直)</option>
+                </select>
+            </div>
+
+            <div class="form-group full-width">
+                <button id="generate-btn">生成圖像</button>
+            </div>
+        </div>
+        
+        <div id="spinner" class="spinner"></div>
+        <div id="status"></div>
+        <div id="results-grid"></div>
+
+        <hr>
+
+        <h2>2. 結束任務並產出證據</h2>
+        <div class="form-group full-width">
+             <button id="end-btn" disabled>結束及下載原圖</button>
+        </div>
+        
+        <hr>
+
+        <h2>3. 生成 PDF 報告 (可選)</h2>
+        <div class="form-group full-width">
+             <button id="report-btn" disabled>下載 PDF 摘要報告</button>
+        </div>
+    </div>
+
+    <script>
+        // D1-1. 獲取所有需要操作的 DOM 元素
+        const generateBtn = document.getElementById('generate-btn');
+        const endBtn = document.getElementById('end-btn');
+        const reportBtn = document.getElementById('report-btn');
+        const spinner = document.getElementById('spinner');
+        const statusEl = document.getElementById('status');
+        const resultsGrid = document.getElementById('results-grid');
+
+        // D1-2. 工具函式：用於觸發瀏覽器下載
+        function downloadFile(url) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = url.split('/').pop();
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // === D2. 步驟一 /generate (生成預覽) ===
+        generateBtn.addEventListener('click', async () => {
+            // D2-1. 檢查輸入：必須填寫申請人
+            const applicantName = document.getElementById('applicant_name').value;
+            if (!applicantName) {
+                alert('請先填寫 申請人名稱！');
+                return;
+            } // <--- 修正：補上這個遺失的 '}'
+
+            // D2-2. 準備 API 需要的 Payload (已修改為 DALL-E 3)
+            const payload = {
+                prompt: document.getElementById('prompt').value,
+                size: document.getElementById('size').value
+            };
+            if (!payload.prompt) {
+                alert('請填寫 Prompt！');
+                return;
+            }
+
+            // D2-3. 更新 UI: 顯示 Spinner、禁用按鈕
+            spinner.style.display = 'block';
+            statusEl.textContent = '正在生成預覽圖...';
+            generateBtn.disabled = true;
+
+            try {
+                // D2-4. 呼叫後端 /generate API
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const result = await response.json();
+                
+                // D2-5. 處理成功回應：顯示狀態、將圖片卡片加入網格
+                if (response.ok) {
+                    statusEl.textContent = `✅ 版本 ${result.version} 預覽圖生成成功。`;
+                    const card = document.createElement('div');
+                    card.className = 'result-card';
+                    card.innerHTML = `<img src="${result.preview_url}" alt="Preview ${result.version}"><p>版本 ${result.version}</p>`;
+                    resultsGrid.appendChild(card);
+                    endBtn.disabled = false; // 啟用步驟二的按鈕
+                } else {
+                    // D2-6. 處理 API 錯誤
+                    throw new Error(result.error || '預覽圖生成失敗');
+                }
+            } catch (error) {
+                // D2-7. 處理網路或 fetch 錯誤
+                statusEl.textContent = `❌ 錯誤: ${error.message}`;
+            } finally {
+                // D2-8. 清理 UI：無論成功失敗，都隱藏 Spinner 並重設按鈕
+                spinner.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        });
+        // === D3. 步驟二 /finalize_session (結束任務) ===
+        endBtn.addEventListener('click', async () => {
+            // D3-1. 再次確認申請人名稱
+            const applicantName = document.getElementById('applicant_name').value;
+             if (!applicantName) {
+                alert('請確認 申請人名稱 已填寫！');
+                return;
+            }
+
+            // D3-2. 更新 UI：顯示 Spinner、禁用所有操作按鈕
+            spinner.style.display = 'block';
+            statusEl.textContent = '正在結束任務並封裝所有證據...';
+            endBtn.disabled = true;
+            generateBtn.disabled = true;
+
+            try {
+                // D3-3. 呼叫後端 /finalize_session API
+                const response = await fetch('/finalize_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ applicant_name: applicantName }),
+                });
+                const result = await response.json();
+
+                // D3-4. 處理成功回應：自動下載所有原圖，並啟用步驟三按鈕
+                if (response.ok) {
+                    statusEl.textContent = '✅ 證據已產出！將自動下載所有原圖...';
+                    result.image_urls.forEach(url => downloadFile(url));
+                    reportBtn.disabled = false;
+                } else {
+                    // D3-5. 處理 API 錯誤
+                    throw new Error(result.error || '結束任務失敗');
+                }
+            } catch (error) {
+                // D3-6. 處理網路錯誤 (並恢復按鈕)
+                statusEl.textContent = `❌ 錯誤: ${error.message}`;
+                endBtn.disabled = false;
+                generateBtn.disabled = false;
+            } finally {
+                // D3-7. 清理 UI：隱藏 Spinner
+                spinner.style.display = 'none';
+            }
+        });
+
+        // === D4. 步驟三 /create_report (生成 PDF) ===
+        reportBtn.addEventListener('click', async () => {
+            // D4-1. 更新 UI：顯示 Spinner、禁用報告按鈕
+            spinner.style.display = 'block';
+            statusEl.textContent = '正在生成 PDF 報告...';
+            reportBtn.disabled = true;
+
+            try {
+                // D4-2. 呼叫後端 /create_report API
+                const response = await fetch('/create_report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const result = await response.json();
+
+                // D4-3. 處理成功回應：自動下載 PDF 報告
+                if (response.ok) {
+                    statusEl.textContent = 'PDF 報告生成完畢，即將下載。';
+                    downloadFile(result.report_url);
+                } else {
+                    // D4-4. 處理 API 錯誤
+                    throw new Error(result.error || '報告生成失敗');
+                }
+            } catch (error) {
+                // D4-5. 處理網路錯誤
+                statusEl.textContent = `❌ 錯誤: ${error.message}`;
+            } finally {
+                // D4-6. 清理 UI：隱藏 Spinner、恢復按鈕
+                spinner.style.display = 'none';
+                reportBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
