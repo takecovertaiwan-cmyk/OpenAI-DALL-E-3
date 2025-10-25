@@ -54,18 +54,16 @@
                 <label for="prompt">輸入指令 (Prompt)</label>
                 <textarea id="prompt" placeholder="例如：A blue sports car" rows="3"></textarea>
             </div>
-            <div class="form-group">
-                <label for="seed">隨機種子 (Seed) (可選)</label>
-                <input type="text" id="seed" placeholder="留空則隨機生成">
+            
+            <div class="form-group full-width">
+                <label for="size">選擇尺寸 (DALL-E 3)</label>
+                <select id="size" style="padding: 0.8em; font-size: 1em; border-radius: 6px; border: 1px solid #ccc; background-color: white; -webkit-appearance: none; appearance: none;">
+                    <option value="1024x1024">1024x1024 (方形)</option>
+                    <option value="1792x1024">1792x1024 (寬螢幕)</option>
+                    <option value="1024x1792">1024x1792 (垂直)</option>
+                </select>
             </div>
-             <div class="form-group">
-                <label for="width">圖片寬度 (固定)</label>
-                <input type="number" id="width" value="2752" readonly style="background-color: #eee;">
-            </div>
-             <div class="form-group">
-                <label for="height">圖片高度 (固定)</label>
-                <input type="number" id="height" value="1536" readonly style="background-color: #eee;">
-            </div>
+
             <div class="form-group full-width">
                 <button id="generate-btn">生成圖像</button>
             </div>
@@ -116,12 +114,11 @@
             if (!applicantName) {
                 alert('請先填寫 申請人名稱！');
                 return;
-            }
-
-            // D2-2. 準備 API 需要的 Payload (Prompt, Seed)
+                
+        // D2-2. 準備 API 需要的 Payload (已修改為 DALL-E 3)
             const payload = {
                 prompt: document.getElementById('prompt').value,
-                seed: document.getElementById('seed').value,
+                size: document.getElementById('size').value
             };
             if (!payload.prompt) {
                 alert('請填寫 Prompt！');
