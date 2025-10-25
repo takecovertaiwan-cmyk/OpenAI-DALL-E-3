@@ -114,8 +114,9 @@
             if (!applicantName) {
                 alert('請先填寫 申請人名稱！');
                 return;
-                
-        // D2-2. 準備 API 需要的 Payload (已修改為 DALL-E 3)
+            } // <--- 修正：補上這個遺失的 '}'
+
+            // D2-2. 準備 API 需要的 Payload (已修改為 DALL-E 3)
             const payload = {
                 prompt: document.getElementById('prompt').value,
                 size: document.getElementById('size').value
