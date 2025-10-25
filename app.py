@@ -131,18 +131,42 @@ class WesmartPDFReport(FPDF):
             self.set_font("Courier", "", 8); self.set_text_color(120)
             self.multi_cell(0, 7, snapshot['hashes']['size_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             
-            # 顯示圖像 (圖片等比放大)
+            # 顯示圖像 (圖片等比放大，確保不超出高度限制)
             self.ln(5)
             try:
                 img_bytes = base64.b64decode(snapshot['content_base64'])
                 img_file_obj = io.BytesIO(img_bytes)
                 
-                available_width = self.w - self.l_margin - self.r_margin
-                self.image(img_file_obj, w=available_width, type='PNG') # h=0 (預設) 會自動等比縮放
-            except Exception as e: print(f"在PDF中顯示圖片失敗: {e}")
-            self.ln(5) 
+                # 1. 讀取原始尺寸並定義可用區域
+                orig_img = Image.open(img_file_obj)
+                orig_w, orig_h = orig_img.size
+                
+                available_width = self.w - self.l_margin - self.r_margin # 頁面寬度
+                MAX_IMAGE_HEIGHT = 100 # 設定圖片最大高度 (單位: mm)
+                
+                # 2. 計算縮放比例 (確保圖片在寬高上都不被裁切)
+                ratio_w = available_width / orig_w
+                ratio_h = MAX_IMAGE_HEIGHT / orig_h
+                
+                # 採用較小的比例，即是我們需要的最大縮放係數
+                scale_factor = min(ratio_w, ratio_h)
 
-            is_first_snapshot = False # 關閉旗標
+                # 3. 計算繪製尺寸
+                draw_w = orig_w * scale_factor
+                draw_h = orig_h * scale_factor
+                
+                # 4. 居中放置
+                x_center = self.l_margin + (available_width - draw_w) / 2
+                
+                # 5. 繪製圖片
+                self.image(img_file_obj, x=x_center, y=self.get_y(), w=draw_w, h=draw_h, type='PNG') 
+                
+                # 6. 移動到圖片下方，並加上間距
+                self.ln(draw_h + 5) 
+
+            except Exception as e: 
+                print(f"在PDF中顯示圖片失敗: {e}")
+                self.ln(5) # 保持間距
     
     # C2-8. 結論驗證頁 (已更新為 DALL-E 3 五重雜湊說明)
     def create_conclusion_page(self, proof_data):
@@ -371,6 +395,7 @@ def static_download(filename): return send_from_directory(app.config['UPLOAD_FOL
 # === G. 啟動服務 ===
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
