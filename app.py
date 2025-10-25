@@ -76,12 +76,18 @@ class WesmartPDFReport(FPDF):
         data = [("出證申請人:", meta.get('applicant', 'N/A')), ("申請事項:", "WesmartAI 生成式 AI 證據報告"), ("申請出證時間:", meta.get('issued_at', 'N/A')), ("出證編號 (報告ID):", meta.get('report_id', 'N/A')), ("出證單位:", meta.get('issuer', 'N/A'))]
         for row in data: self.cell(20); self.cell(45, 10, row[0], align='L'); self.multi_cell(0, 10, row[1], new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
     
-    # C2-7. 任務細節頁 (已更新為六重 File Hash)
+    # C2-7. 任務細節頁 (已更新為 DALL-E 3 五重雜湊 + 圖片放大 + 強制分頁)
     def create_generation_details_page(self, proof_data):
         self.add_page();
         self.chapter_title("一、各版本生成快照")
         
+        is_first_snapshot = True # 追蹤迴圈的第一次
         for snapshot in proof_data['event_proof']['snapshots']:
+            
+            # 每一版本強制分頁
+            if not is_first_snapshot:
+                self.add_page() 
+            
             self.set_font("NotoSansTC", "", 12); self.set_text_color(0);
             self.cell(0, 10, f"版本索引: {snapshot['version_index']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L'); self.ln(2)
             
@@ -96,56 +102,56 @@ class WesmartPDFReport(FPDF):
             details = [
                 ("時間戳記 (UTC)", snapshot['timestamp_utc']),
                 ("輸入指令 (Prompt)", snapshot['prompt']),
-                ("隨機種子 (Seed)", str(snapshot['seed'])),
-                ("尺寸 (寬x高)", f"{snapshot['width']} x {snapshot['height']}")
+                ("修改後指令 (Revised)", snapshot.get('revised_prompt', 'N/A')), # 新增
+                ("尺寸 (Size)", snapshot['size']) # 修改
             ]
             for key, value in details:
                 self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, f"  - {key}:", align='L');
                 self.set_font("NotoSansTC", "", 9); self.set_text_color(80)
                 self.multi_cell(0, 7, str(value), align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-            # 顯示六重雜湊 (File Hash 取代 Image Hash)
+            # 顯示新·五重雜湊
             self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 時間戳雜湊:", align='L');
             self.set_font("Courier", "", 8); self.set_text_color(120)
             self.multi_cell(0, 7, snapshot['hashes']['timestamp_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             
-            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 檔案雜湊 (File):", align='L'); # <--- 關鍵升級
+            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 檔案雜湊 (File):", align='L');
             self.set_font("Courier", "", 8); self.set_text_color(120)
-            self.multi_cell(0, 7, snapshot['hashes']['file_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT) # <--- 關鍵升級
+            self.multi_cell(0, 7, snapshot['hashes']['file_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 指令雜湊:", align='L');
             self.set_font("Courier", "", 8); self.set_text_color(120)
             self.multi_cell(0, 7, snapshot['hashes']['prompt_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 種子雜湊:", align='L');
+            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 修改後指令雜湊:", align='L'); # 新增
             self.set_font("Courier", "", 8); self.set_text_color(120)
-            self.multi_cell(0, 7, snapshot['hashes']['seed_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.multi_cell(0, 7, snapshot['hashes']['revised_prompt_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             
-            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 寬度雜湊:", align='L');
+            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 尺寸雜湊:", align='L'); # 新增
             self.set_font("Courier", "", 8); self.set_text_color(120)
-            self.multi_cell(0, 7, snapshot['hashes']['width_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-            self.set_font("NotoSansTC", "", 10); self.set_text_color(0); self.cell(60, 7, "  - 高度雜湊:", align='L');
-            self.set_font("Courier", "", 8); self.set_text_color(120)
-            self.multi_cell(0, 7, snapshot['hashes']['height_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.multi_cell(0, 7, snapshot['hashes']['size_hash'], align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             
-            # 顯示圖像
+            # 顯示圖像 (圖片等比放大)
             self.ln(5)
             try:
                 img_bytes = base64.b64decode(snapshot['content_base64'])
                 img_file_obj = io.BytesIO(img_bytes)
-                self.image(img_file_obj, x=(self.w-80)/2, w=80, type='PNG')
+                
+                available_width = self.w - self.l_margin - self.r_margin
+                self.image(img_file_obj, w=available_width, type='PNG') # h=0 (預設) 會自動等比縮放
             except Exception as e: print(f"在PDF中顯示圖片失敗: {e}")
-            self.ln(15)
+            self.ln(5) 
+
+            is_first_snapshot = False # 關閉旗標
     
-    # C2-8. 結論驗證頁 (已更新為六重 File Hash 說明)
+    # C2-8. 結論驗證頁 (已更新為 DALL-E 3 五重雜湊說明)
     def create_conclusion_page(self, proof_data):
         self.add_page(); self.chapter_title("三、報告驗證")
         
-        # 需求 #2: 更新說明文字
+        # 更新說明文字
         self.chapter_body(
-            "本報告之真實性與完整性，係依據每一生成頁面所記錄之六重雜湊（時間戳雜湊、檔案雜湊、提示詞雜湊、種子雜湊、寬度雜湊與高度雜湊）逐步累積計算所得。\n" # <--- 關鍵升級
-            "每頁六重雜湊經系統自動組合為單一 Step Hash，而所有 Step Hash 再依序整合為最終之 Final Event Hash。\n"
+            "本報告之真實性與完整性，係依據每一生成頁面所記錄之五重雜湊（時間戳雜湊、檔案雜湊、原始提示詞雜湊、修改後提示詞雜湊與尺寸雜湊）逐步累積計算所得。\n"
+            "每頁五重雜湊經系統自動組合為單一 Step Hash，而所有 Step Hash 再依序整合為最終之 Final Event Hash。\n"
             "Final Event Hash 為整份創作過程的唯一驗證憑證，代表該份報告內所有頁面與內容在生成當下的完整性。\n"
             "任何後續對圖像、提示詞或時間資料的竄改，皆將導致對應之 Step Hash 與 Final Event Hash 不一致，可藉此進行真偽比對與法律層面的舉證。"
         )
@@ -171,105 +177,83 @@ def index():
     latest_proof_data = None
     return render_template('index.html', api_key_set=bool(API_key))
 
-# === E1. /generate: 步驟1: 生成預覽圖 ===
+# === E1. /generate: 步驟1: 生成預覽圖 (已升級為 DALL-E 3) ===
 @app.route('/generate', methods=['POST'])
 def generate():
     if not API_key: 
-        return jsonify({"error": "後端尚未設定 BFL_API_KEY 環境變數"}), 500
+        return jsonify({"error": "後端尚未設定 OPENAI_API_KEY 環境變數"}), 500
     
     data = request.json
     prompt = data.get('prompt')
-    if not prompt: 
-        return jsonify({"error": "Prompt 為必填項"}), 400
+    size = data.get('size') # 從 index.html 獲取 "1024x1024" 格式
+    if not prompt or not size: 
+        return jsonify({"error": "Prompt 和 Size 為必填項"}), 400
 
     try:
-        # E1-0. 獲取前端參數 (尺寸已固定)
-        seed_input = data.get('seed')
-        width = 2752
-        height = 1536
-        seed_value = int(seed_input) if seed_input and seed_input.isdigit() else random.randint(1, 10**9)
+        # E1-1. 提交生成任務到 DALL-E 3 API
+        endpoint = "https://api.openai.com/v1/images/generations"
+        headers = {"Authorization": f"Bearer {API_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "size": size,
+            "n": 1,
+            "response_format": "url" # DALL-E 3 可以返回 URL 或 Base64，URL 較快
+        }
         
-        # E1-1. 提交生成任務到 FLUX API
-        endpoint = "https://api.bfl.ai/v1/flux-pro-1.1-ultra"
-        headers = {"accept": "application/json", "x-key": API_key, "Content-Type": "application/json"}
-        payload = {"prompt": prompt, "width": width, "height": height, "seed": seed_value}
-        
-        initial_res = requests.post(endpoint, headers=headers, json=payload, timeout=60)
-        initial_res.raise_for_status()
-        response_data = initial_res.json()
-        polling_url = response_data.get('polling_url')
+        # DALL-E 3 是同步請求，不需要輪詢
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=120) # 增加超時
+        response.raise_for_status()
+        result_data = response.json()
 
-        if not polling_url:
-            return jsonify({"error": f"API 未返回 polling_url: {response_data}"}), 500
-
-        # E1-2. 輪詢 (Polling) 以獲取結果
-        polling_headers = {"accept": "application/json", "x-key": API_key}
-        image_url = None
-        start_time = time.time()
-        
-        while time.time() - start_time < 120: # 設定 120 秒超時
-            time.sleep(1) # 每秒輪詢一次
-            poll_res = requests.get(polling_url, headers=polling_headers, timeout=60)
-            poll_res.raise_for_status()
-            result_data = poll_res.json()
-            status = result_data.get('status')
-
-            if status == "Ready":
-                image_url = result_data.get('result', {}).get('sample')
-                break
-            elif status in ["Error", "Failed"]:
-                error_message = result_data.get('error', 'Unknown error during generation')
-                return jsonify({"error": f"生成失敗: {error_message}"}), 500
-        
-        if not image_url:
-            return jsonify({"error": "生成超時，無法在時限內取得結果"}), 500
+        # E1-2. 獲取 DALL-E 3 的回傳資料
+        image_url = result_data['data'][0]['url']
+        revised_prompt = result_data['data'][0].get('revised_prompt', prompt) # 獲取修改後的提示詞
         
         # E1-3. 從返回的 URL 下載圖片
         img_bytes = requests.get(image_url, timeout=60).content
-        
-        # E1-4. 從返回的 URL 下載圖片
         
         # E1-5. 儲存預覽圖檔案
         filename = f"preview_v{len(session_previews) + 1}_{int(time.time())}.png"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         Image.open(io.BytesIO(img_bytes)).save(filepath)
 
-        # E1-6. 產生六重雜湊與 Step Hash (最終版：使用 File Hash)
+        # E1-6. 產生新·五重雜湊
         timestamp_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
         img_base64_str = base64.b64encode(img_bytes).decode('utf-8') # 仍需 Base64 供 PDF 顯示
 
-        # 1. 六重雜湊 (File Hash 取代 Image Hash)
+        # 1. 新·五重雜湊
         timestamp_hash = sha256_bytes(timestamp_utc.encode('utf-8'))
-        prompt_hash = sha256_bytes(prompt.encode('utf-8'))
-        seed_hash = sha256_bytes(str(seed_value).encode('utf-8'))
-        width_hash = sha256_bytes(str(width).encode('utf-8'))
-        height_hash = sha256_bytes(str(height).encode('utf-8'))
-        file_hash = sha256_bytes(img_bytes) # <--- 關鍵升級：對原始二進位檔案雜湊
+        prompt_hash = sha256_bytes(prompt.encode('utf-8')) # 原始提示詞
+        revised_prompt_hash = sha256_bytes(revised_prompt.encode('utf-8')) # DALL-E 修改後的提示詞
+        size_hash = sha256_bytes(size.encode('utf-8')) # 尺寸字串 "1024x1024"
+        file_hash = sha256_bytes(img_bytes) # 原始二進位檔案雜湊
 
         # 2. 打包生成 Step Hash
         step_hash_input = json.dumps({
             "timestamp_hash": timestamp_hash,
             "prompt_hash": prompt_hash,
-            "seed_hash": seed_hash,
-            "width_hash": width_hash,
-            "height_hash": height_hash,
-            "file_hash": file_hash  # <--- 關鍵升級
+            "revised_prompt_hash": revised_prompt_hash,
+            "size_hash": size_hash,
+            "file_hash": file_hash
         }, sort_keys=True).encode('utf-8')
         step_hash = sha256_bytes(step_hash_input)
 
-        # E1-7. 暫存所有紀錄 (並包含錯誤修正)
+        # E1-7. 暫存所有紀錄
         session_previews.append({
-            "prompt": prompt, "seed": seed_value, "model": "flux-pro-1.1-ultra",
-            "width": width, "height": height, "filepath": filepath,
+            "prompt": prompt,
+            "revised_prompt": revised_prompt, # 儲存修改後的提示詞
+            "size": size, # 儲存尺寸
+            "model": "dall-e-3",
+            "filepath": filepath,
             "timestamp_utc": timestamp_utc,
             "content_base64": img_base64_str, # 供 PDF 顯示
             "hashes": {
                 "timestamp_hash": timestamp_hash,
                 "prompt_hash": prompt_hash,
-                "seed_hash": seed_hash,
-                "width_hash": width_hash,
-                "height_hash": height_hash,
-                "file_hash": file_hash, # <--- 關鍵升級
+                "revised_prompt_hash": revised_prompt_hash,
+                "size_hash": size_hash,
+                "file_hash": file_hash,
                 "step_hash": step_hash
             }
         })
@@ -280,8 +264,12 @@ def generate():
             "version": len(session_previews)
         })
 
-    # === [E1-EXCEPT] 錯誤處理 (修復 SyntaxError) ===
+# === [E1-EXCEPT] 錯誤處理 (修復 SyntaxError) ===
     except requests.exceptions.RequestException as e:
+        # 處理 OpenAI API 的特定錯誤
+        if e.response is not None:
+            error_details = e.response.json().get('error', {}).get('message', str(e))
+            return jsonify({"error": f"API 請求失敗: {error_details}"}), 500
         return jsonify({"error": f"網路請求失敗: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"error": f"生成過程中發生未知錯誤: {str(e)}"}), 500
@@ -298,15 +286,16 @@ def finalize_session():
         snapshots = []
         image_urls = []
         
-       # E2-1. 迭代所有預覽圖快照 (已包含雜湊)
+        # E2-1. 迭代所有預覽圖快照 (已更新為 DALL-E 3)
         for i, preview in enumerate(session_previews):
             snapshots.append({
                 "version_index": i + 1,
                 "timestamp_utc": preview['timestamp_utc'],
                 "prompt": preview['prompt'],
-                "seed": preview['seed'],
+                "revised_prompt": preview['revised_prompt'], # 新增
+                "size": preview['size'], # 新增
                 "model": preview['model'],
-                "hashes": preview['hashes'], # 包含四重雜湊 + Step Hash
+                "hashes": preview['hashes'], # 包含五重雜湊 + Step Hash
                 "content_base64": preview['content_base64']
             })
             image_urls.append(url_for('static_download', filename=os.path.basename(preview['filepath'])))
@@ -382,6 +371,7 @@ def static_download(filename): return send_from_directory(app.config['UPLOAD_FOL
 # === G. 啟動服務 ===
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
