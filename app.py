@@ -23,7 +23,7 @@ from fpdf.enums import XPos, YPos
 import qrcode
 
 # === B2. 讀取環境變數 (已修改為 OPENAI_API_KEY) ===
-[cite_start]API_key = os.getenv("OPENAI_API_KEY") [cite: 1]
+API_key = os.getenv("OPENAI_API_KEY")
 
 # === B3. Flask App 初始化 ===
 app = Flask(__name__)
@@ -371,6 +371,7 @@ def static_download(filename): return send_from_directory(app.config['UPLOAD_FOL
 # === G. 啟動服務 ===
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
